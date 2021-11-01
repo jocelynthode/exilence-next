@@ -1,17 +1,67 @@
 name: Build Exilence
 on:
   push:
-    branches: [add-linux-build]
+    tags:
+      - '**'
+    paths-ignore:
+      - '.vscode/**'
+      - '*.md'
 jobs:
-  linux:
-    runs-on: ubuntu-20.04
+  build:
+    strategy:
+      matrix:
+        target:
+          - win
+          - linux
+        include:
+          - target: linux
+            os: ubuntu-latest
+            name: Exilence-Next.AppImage
+          - target: win
+            os: windows-latest
+            name: 'Exilence-Next.exe'
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: ExilenceNextApp
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
-      with:
-        node-version: 14
-    - run: npm install
-    - run: npm run smoke-build-linux
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 16
+      - uses: actions/cache@v2
+        id: npm-cache
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+      - run: npm install
+      - run: npm run smoke-build-${{ matrix.target }}
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: ${{ matrix.name }}
+          path: ExilenceNextApp/dist/${{ matrix.name }}
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Download releases from build
+        uses: actions/download-artifact@v1
+        with:
+          name: Exilence-Next.AppImage
+          path: .
+      - name: Download releases from build
+        uses: actions/download-artifact@v1
+        with:
+          name: 'Exilence-Next.exe'
+          path: .
+      - name: Create GitHub release ${{ matrix.target }}
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            Exilence-Next.exe
+            Exilence-Next.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
